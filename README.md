@@ -34,7 +34,7 @@ Browser ── server1.kingg.in ──────►│ Apache reverse proxy �
 | Private subnet | `10.125.169.0/24` |
 | Resources | No CPU, RAM or disk limits: containers use host resources on demand |
 | Host login | Password, forced command into the container |
-| Container login | Root, key-only (key belongs to the matching host user) |
+| Container login | Automatic, no second password (internal link set up once by the admin) |
 
 | Host user | Container | Container IP | Domain |
 |---|---|---|---|
@@ -48,7 +48,7 @@ Browser ── server1.kingg.in ──────►│ Apache reverse proxy �
 ssh user1@<HOST_PUBLIC_IP>
 ```
 
-After entering the host password, the user lands at `root@server1:~#`. Closing that session closes the connection, and the user never gets a shell on the host. Users can install any software inside their own container (web servers, Node, Docker, databases) without affecting other users.
+Users only need their username and password. They do not create, copy or manage any SSH keys. After entering the password, the user lands at `root@server1:~#`. Closing that session closes the connection, and the user never gets a shell on the host. Users can install any software inside their own container (web servers, Node, Docker, databases) without affecting other users.
 
 ## Setup guide (run as `ubuntu` on the host)
 
@@ -105,9 +105,9 @@ sudo adduser user3
 
 Do **not** add them to the `lxd` group, because that is equivalent to root on the host.
 
-### 6. Root key login inside each container
+### 6. Internal host-to-container link (admin only, one-time)
 
-Each host user gets a key, and only that key is authorised for the matching container.
+This step is for the server admin only. Users never see it and never type a key or a second password. It lets the host open the root session inside the matching container automatically when a user logs in, which is what makes the jump passwordless. Without it, the user would be asked for an extra password inside the container. Each host user has their own internal key, and it is authorised only for their own container.
 
 ```bash
 for i in 1 2 3; do
@@ -269,13 +269,23 @@ lxc config set server1 limits.memory 6GB   # optional cap later
 sudo passwd user1                 # reset a user's host password
 ```
 
+## Resetting a forgotten password
+
+The server owner (admin) manages all user passwords. Log in to the host as `ubuntu` and run:
+
+```bash
+sudo passwd user1
+```
+
+Enter the new password twice and tell the user. It takes effect immediately, with no restart needed. Users cannot change their host password themselves, because they are always placed inside their container. The `passwd` command there would only change the container's root password, not the host login, so password changes and resets go through the admin.
+
 ## Adding another user and server
 
 Repeat the same pattern with a new number (for example `server4`, `user4`, IP `10.125.169.14`):
 
 1. `lxc launch ubuntu:24.04 server4` and set its fixed IP (step 4).
 2. `sudo adduser user4` (step 5).
-3. Create the container root key for `user4` (step 6).
+3. Create the internal host-to-container link for `user4` (step 6).
 4. Add a `Match User user4` block to `/etc/ssh/sshd_config.d/00-containers.conf` (step 7).
 5. Add an Apache vhost for `server4.kingg.in` and an A record (or rely on the wildcard).
 
@@ -298,7 +308,8 @@ echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
 | `lxc list` shows empty IPv4 | Apply the iptables rules in step 3, then `lxc restart` the containers |
 | Container has an IP but no internet | Check `lxc network show lxdbr0` has `ipv4.nat: "true"` and re-apply step 3 |
 | `Permission denied (publickey)` on host login | Password login not enabled for that user: check step 7 and `sudo sshd -T -C user=user1,host=x,addr=1.1.1.1 \| grep passwordauthentication` |
-| Login works but asks for a password inside the container | The user's key is missing from the container's `/root/.ssh/authorized_keys`: redo step 6 for that number |
+| Login works but asks for a second password inside the container | The internal link from step 6 is missing for that user: redo step 6 for that number |
+| User forgot their password | Admin runs `sudo passwd userN` on the host (see "Resetting a forgotten password") |
 | SSH connection timed out | The port is not open in the OCI security list or iptables |
 | Domain shows the wrong page or the host's default page | The vhost is not enabled or `ServerName` does not match: `sudo apache2ctl -S` |
 | 502 or 503 from the domain | The web server inside the container is down or the vhost port is wrong: `curl -I http://10.125.169.11` from the host |
@@ -309,5 +320,5 @@ echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
 - Containers are unprivileged, so root inside a container is not root on the host.
 - Users have no host shell, no TCP forwarding and no X11. They must not be added to the `lxd` group.
 - No resource limits means one heavy user can slow the host and the others. Add `limits.*` values if that becomes a problem.
-- SSH is exposed publicly with password login for these three users: use strong passwords and keep `fail2ban` running. Key-based login is safer if users can supply their own public keys.
+- SSH is exposed publicly with password login for these three users: use strong passwords and keep `fail2ban` running.
 - Back up containers with `lxc snapshot`, and keep an off-server copy of important data.
