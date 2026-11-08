@@ -63,9 +63,6 @@ sudo add-apt-repository -y ppa:deadsnakes/ppa
 sudo apt update
 sudo apt install -y apache2 python3.14 python3.14-venv python3.14-dev python3-setuptools python3-pip pkg-config mariadb-server libmysqlclient-dev redis-server xvfb libfontconfig fontconfig xfonts-75dpi npm supervisor
 sudo systemctl enable --now apache2 mariadb redis-server
-python3.14 -m ensurepip --upgrade
-echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc && source ~/.bashrc
-python3.14 -m pip install --upgrade pip
 ```
 
 The `mtu 1400` line is a fix for stalled downloads inside containers on Oracle. It lasts until the container restarts.
